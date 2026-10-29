@@ -1,0 +1,35 @@
+# .NET build output and IDE state
+**/bin/
+**/obj/
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Local SDK and package caches
+.dotnet/
+.dotnet-home/
+.nuget-packages/
+dotnet-install.ps1
+
+# Published executables
+artifacts/
+
+# Local captures, school responses and diagnostic data
+research/
+*.log
+
+# Never commit local accounts, credentials or application settings
+settings.json
+settings.json.tmp
+accounts.json
+credentials.json
+secrets.json
+.env
+.env.*
+!.env.example
+WebView2/
+
+# Windows metadata
+Thumbs.db
+Desktop.ini
