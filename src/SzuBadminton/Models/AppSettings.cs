@@ -4,6 +4,7 @@ public sealed class AppSettings
 {
     public List<SavedAccount> Accounts { get; set; } = [];
     public string SelectedAccountId { get; set; } = string.Empty;
+    public string AuthenticatedAccountId { get; set; } = string.Empty;
     public bool AutoLogin { get; set; } = true;
     public bool AutoOpenBadminton { get; set; } = true;
     public bool DailyAutoBooking { get; set; } = true;

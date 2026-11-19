@@ -207,7 +207,7 @@ public partial class MainWindow : Window
         StudentIdTextBox.Text = account?.StudentId ?? string.Empty;
         AccountPasswordBox.Clear();
         SettingsService.Save(_settings);
-        SelectionStatusText.Text = account is null ? "请先保存校园账号。" : "已选择账号，将在下次登录时使用。";
+        SelectionStatusText.Text = account is null ? "请先保存校园账号。" : "已选择账号；点击“自动登录并进入”切换校园会话。";
     }
 
     private void SaveAccountButton_Click(object sender, RoutedEventArgs e)
@@ -315,6 +315,14 @@ public partial class MainWindow : Window
                 WebView.CoreWebView2.Navigate(eventArgs.Uri);
             };
             _browserReady = true;
+            if (AccountSessionRules.RequiresSessionReset(
+                _settings.AutoLogin,
+                _settings.AuthenticatedAccountId,
+                _settings.SelectedAccountId))
+            {
+                AppendLog("所选账号与上次认证账号不同，正在清理原校园会话。");
+                await ClearSchoolSessionAsync();
+            }
             AppendLog("浏览器初始化完成，准备自动登录。");
             await NavigateAsync(VenueUrl);
             await AutoLoginAndOpenAsync(_settings.AutoOpenBadminton);
@@ -363,7 +371,7 @@ public partial class MainWindow : Window
         {
             SaveSettingsFromControls(false);
             LoginNowButton.IsEnabled = false;
-            await AutoLoginAndOpenAsync(true);
+            await SwitchToSelectedAccountAsync();
         }
         catch (Exception exception)
         {
@@ -375,11 +383,43 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<bool> AutoLoginAndOpenAsync(bool openBookingForm)
+    private async Task SwitchToSelectedAccountAsync()
+    {
+        _ = SelectedAccount
+            ?? _settings.Accounts.FirstOrDefault(item => item.Id == _settings.SelectedAccountId)
+            ?? throw new InvalidOperationException("请先选择或保存一个校园账号。");
+
+        _bookingCancellation?.Cancel();
+        SelectionStatusText.Text = "正在结束原校园会话并切换到已选账号……";
+        await ClearSchoolSessionAsync();
+
+        // An existing ehall session bypasses the login form, so explicit account
+        // switching must clear only SZU cookies before navigating to the venue.
+        await NavigateAsync(VenueUrl);
+        if (await AutoLoginAndOpenAsync(true, explicitAccountSwitch: true))
+        {
+            AppendLog("已使用当前选中账号完成校园会话切换。");
+        }
+    }
+
+    private async Task ClearSchoolSessionAsync()
+    {
+        var cookieManager = WebView.CoreWebView2.CookieManager;
+        foreach (var origin in new[] { "https://authserver.szu.edu.cn", "https://ehall.szu.edu.cn" })
+        {
+            var cookies = await cookieManager.GetCookiesAsync(origin);
+            foreach (var cookie in cookies)
+            {
+                cookieManager.DeleteCookie(cookie);
+            }
+        }
+    }
+
+    private async Task<bool> AutoLoginAndOpenAsync(bool openBookingForm, bool explicitAccountSwitch = false)
     {
         if (IsAuthPage())
         {
-            if (!_settings.AutoLogin)
+            if (!_settings.AutoLogin && !explicitAccountSwitch)
             {
                 SelectionStatusText.Text = "自动登录未启用，请在右侧手动登录。";
                 return false;
@@ -465,6 +505,8 @@ public partial class MainWindow : Window
                 await Task.Delay(400);
                 if (!IsAuthPage())
                 {
+                    _settings.AuthenticatedAccountId = account.Id;
+                    SettingsService.Save(_settings);
                     AppendLog("学校统一身份认证通过。");
                     SelectionStatusText.Text = "登录成功，正在进入羽毛球预约窗口。";
                     return true;
